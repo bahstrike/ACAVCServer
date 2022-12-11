@@ -3,4 +3,6 @@ The server component which supports voice chat for [ACAudio](https://github.com/
 
 This project is comprised of two components:
 - ACAVCServerConsole: Console application that can be used as-is and also demonstrates the performance metrics available from server
-- ACAVCServer: Actual library that implements the entire server operation
+- ACAVCServer: Actual library that implements the entire server operation; to be used from any project
+
+![](https://github.com/bahstrike/ACAVCServer/blob/main/docs/consoleapp.jpg)
