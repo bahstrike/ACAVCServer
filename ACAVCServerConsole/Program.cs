@@ -114,6 +114,12 @@ namespace ACAVCServerConsole
             // hook process exit so we can try a proper shutdown if console window is manually closed
             AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
 
+
+            // define some UI scales (non-functional; would change depending on server popularity)
+            const int expectedSpeakingPlayers = 30;
+            const int expectedListenersPerPlayer = 5;
+
+
             // declare our local performance metric vars and whatnot
             uint totalIncomingConnectionsCount = 0;
             uint totalPacketsReceivedCount = 0;
@@ -126,6 +132,7 @@ namespace ACAVCServerConsole
             double avgRunTime = 0.0;
             int avgSentBytes = 0;
             int avgReceivedBytes = 0;
+            const int sleepMsec = 50;
 
             int lastWidth = Console.WindowWidth;
             int lastHeight = Console.WindowHeight;
@@ -173,13 +180,26 @@ namespace ACAVCServerConsole
 
                 // retrieve / preprocess performance metrics
                 double slowRunTime = ((double)100/*anticipate 100msec for an audio chunk?*/ / 1000.0) * 0.2/*lets set our bar lower than bare minimum that client might expect*/;
+                
                 totalIncomingConnectionsCount += (uint)Server.IncomingConnectionsCount;
+                Server.IncomingConnectionsCount = 0;
+
                 totalPacketsReceivedCount += (uint)Server.PacketsReceivedCount;
-                totalPacketsReceivedBytes += Server.PacketsReceivedBytes;
+                Server.PacketsReceivedCount = 0;
+
+                uint receivedBytes = Server.PacketsReceivedBytes;
+                Server.PacketsReceivedBytes = 0;
+                totalPacketsReceivedBytes += receivedBytes;
+                avgReceivedBytes = (int)(avgReceivedBytes + receivedBytes) / 2;
+
                 totalPacketsSentCount += (uint)Server.PacketsSentCount;
-                totalPacketsSentBytes += Server.PacketsSentBytes;
-                avgSentBytes = (int)(avgSentBytes + Server.PacketsSentBytes) / 2;
-                avgReceivedBytes = (int)(avgReceivedBytes + Server.PacketsReceivedBytes) / 2;
+                Server.PacketsSentCount = 0;
+
+                uint sentBytes = Server.PacketsSentBytes;
+                Server.PacketsSentBytes = 0;
+                totalPacketsSentBytes += sentBytes;
+                avgSentBytes = (int)(avgSentBytes + sentBytes) / 2;
+
                 double[] runTimes = Server.CollectRunTimes();
                 if (runTimes.Length > 0)
                 {
@@ -208,7 +228,7 @@ namespace ACAVCServerConsole
                 WriteLine();
 
                 WriteLine($"Players:{Server.GetPlayers().Length}  TotalConnectAttempts:{totalIncomingConnectionsCount}");
-                WriteLine($"PacketsSent:{totalPacketsSentCount} ({bytesizestring(totalPacketsSentBytes)})  PacketsReceived:{totalPacketsReceivedCount} ({bytesizestring(totalPacketsReceivedBytes)})");
+                WriteLine($"PacketsReceived:{totalPacketsReceivedCount} ({bytesizestring(totalPacketsReceivedBytes)})    PacketsSent:{totalPacketsSentCount} ({bytesizestring(totalPacketsSentBytes)})  ");
                 WriteLine($"numRums:{numRuns}  slowRuns:{slowRuns}   maxRun:{(int)(maxRunTime*1000)}msec  avgRun:{(int)(avgRunTime*1000)}msec");
 
                 WriteLine();
@@ -219,11 +239,12 @@ namespace ACAVCServerConsole
 
                 bargraph(" CPU", avgRunTime/slowRunTime, $"{(int)(slowRunTime*1000.0)}msec", barWidth);
 
-                int expectedReceiveBytesPerSlowRun = 40/*i dunno some number to make it look good*/ * Server.CurrentStreamInfo.DetermineExpectedBytes((int)(slowRunTime * 1000.0));
-                bargraph("RECV", (double)avgReceivedBytes / (double)expectedReceiveBytesPerSlowRun, $"{bytesizestring((ulong)expectedReceiveBytesPerSlowRun)}/sec", barWidth);
+                double secPerTick = (double)sleepMsec / 1000.0;
+                int expectedReceiveBytesPerSlowRun = (int)(expectedSpeakingPlayers * Server.CurrentStreamInfo.DetermineExpectedBytes((int)(slowRunTime * 1000.0)) / secPerTick);
+                bargraph("RECV", (double)avgReceivedBytes / (double)expectedReceiveBytesPerSlowRun / secPerTick, $"{bytesizestring((ulong)expectedReceiveBytesPerSlowRun)}/sec", barWidth);
 
-                int expectedSendBytesPerSlowRun = 5/*i dunno some number of expected listeners for each speaker*/ * expectedReceiveBytesPerSlowRun;
-                bargraph("SEND", (double)avgSentBytes / (double)expectedSendBytesPerSlowRun, $"{bytesizestring((ulong)expectedSendBytesPerSlowRun)}/sec", barWidth);
+                int expectedSendBytesPerSlowRun = expectedListenersPerPlayer * expectedReceiveBytesPerSlowRun;
+                bargraph("SEND", (double)avgSentBytes / (double)expectedSendBytesPerSlowRun / secPerTick, $"{bytesizestring((ulong)expectedSendBytesPerSlowRun)}/sec", barWidth);
 
 
 
@@ -242,16 +263,7 @@ namespace ACAVCServerConsole
                 WriteLine("<Press ESCAPE to stop server>");
 
 
-
-                // reset accumulative counters since we've scraped the values for this console UI "tick"
-                Server.IncomingConnectionsCount = 0;
-                Server.PacketsReceivedCount = 0;
-                Server.PacketsReceivedBytes = 0;
-                Server.PacketsSentCount = 0;
-                Server.PacketsSentBytes = 0;
-
-
-                System.Threading.Thread.Sleep(50);
+                System.Threading.Thread.Sleep(sleepMsec);
             }
 
 
